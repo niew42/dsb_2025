@@ -1,0 +1,585 @@
+{
+  "name": "namecard_full",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1472,
+        -176
+      ],
+      "id": "748fae96-9712-4dfe-a917-c0295f860934",
+      "name": "Telegram Trigger",
+      "webhookId": "c835b972-cf39-4eb5-8ca9-90ade4a68dc0",
+      "credentials": {
+        "telegramApi": {
+          "id": "vdPi3yhFs2JR8L4O",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "คุณคือผู้ช่วย AI ที่เชี่ยวชาญในการดึงข้อมูลจากรูปภาพ\n\nหน้าที่ของคุณคือ:\n1. วิเคราะห์รูปภาพที่ได้รับ\n2. ดึงข้อมูลต่อไปนี้ออกมาให้ครบถ้วนที่สุด:\n   - name_en\n   - name_cn\n   - company_en\n   - company_cn\n   - title\n   - position\n   - phonenumber\n   - email\n   - wechat\n   - whatsapp\n   - website\n   - address\n   - city\n   - country\n3. หากข้อมูลส่วนไหนไม่มี ให้เว้นค่าเป็นค่าว่าง (\"\") หรือ null\n4. ตอบกลับผลลัพธ์เป็น JSON object ที่ถูกต้องและสมบูรณ์เท่านั้น ห้ามมีข้อความอธิบาย, คำนำ, หรือตัวอักษรอื่นใดนอกวงเล็บปีกกา {} โดยเด็ดขาด\n\nตัวอย่างผลลัพธ์ที่ต้องการ:\n{\n    \"name_en\": \"Roy Ming\",\n    \"name_cn\": \"明 松\",\n    \"company_en\": \"Shenzhen Cosun Sign Engineering Co.,Ltd\",\n    \"company_cn\": \"深圳柯赛标识工程有限公司\",\n    \"title\": \"Region Supervisor\",\n    \"position\": \"\",\n    \"phonenumber\": \"+86 755-28351036\",\n    \"email\": \"roy@cosunsign.com\",\n    \"wechat\": \"cosunmake17\",\n    \"whatsapp\": \"\",\n    \"website\": \"www.cosunsign.com\",\n    \"address\": \"No.7 Fuping Middle Road,Longgang District,Shenzhen China (518117)\",\n    \"city\": \"Shenzhen\",\n    \"country\": \"China\"\n}\n\nตอนนี้ ให้วิเคราะห์รูปภาพที่ได้รับและสร้างผลลัพธ์เป็น JSON object ตามรูปแบบที่กำหนด",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        -816,
+        -176
+      ],
+      "id": "e6c38c93-ea9e-4036-a21b-88589f1be4f1",
+      "name": "AI Agent",
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "retryOnFail": false,
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "model": "google/gemini-2.5-flash-preview-09-2025",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        -16
+      ],
+      "id": "a6e1ae75-7b08-470f-bb8a-f068efb10aa1",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "WzExDMJSgz5snRGD",
+          "name": "OpenRouter account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $json.message.photo[2].file_id }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -1152,
+        -208
+      ],
+      "id": "bee0f843-d152-4f93-9210-bdd406d0b24f",
+      "name": "Get a file",
+      "webhookId": "bbde4cdf-b81c-43a3-837d-58ee74ee6a74",
+      "credentials": {
+        "telegramApi": {
+          "id": "vdPi3yhFs2JR8L4O",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// --- Setup: รับข้อมูลจาก Input ทั้งสอง ---\nconst aiItems = $input.all(0);\nconst triggerItems = $input.all(1);\n\n// --- 1. รับและทำความสะอาดข้อมูลจาก AI Agent ---\nconst cleanedString = aiItems[0].json.output\n  .replace(/```json\\n/g, \"\")\n  .replace(/\\n```/g, \"\");\n\n// --- 2. แปลงเป็น JSON Object ---\nlet jsonObject;\ntry {\n  jsonObject = JSON.parse(cleanedString);\n} catch (error) {\n  return [{ json: { error: \"Failed to parse JSON\" } }];\n}\n\n// --- 3. ดึงและสกัด Remark จาก Telegram Trigger (เวอร์ชันปรับปรุง) ---\nlet remark = \"-\"; \nconst caption = triggerItems[0].json.message?.caption; \n\nif (caption && caption.startsWith(\"rm \")) {\n  // ตัดเอาข้อความหลัง \"rm \" และลบช่องว่างหน้า-หลัง\n  const fullRemark = caption.substring(3).trim(); \n  // แยกข้อความด้วยช่องว่าง แล้วเอามาแค่ส่วนแรก\n  remark = fullRemark.split(' ')[0]; \n}\n\n// --- 4. เพิ่ม Remark เข้าไปใน Object ข้อมูล ---\njsonObject.remark = remark;\n\n// --- 5. วนลูปเช็คค่าว่างและจัดรูปแบบข้อมูล ---\nfor (const key in jsonObject) {\n  if (jsonObject[key] === null || jsonObject[key] === undefined || jsonObject[key] === \"\") {\n    jsonObject[key] = \"-\";\n  }\n}\n\n// --- 6. จัดการเบอร์โทรศัพท์เป็นพิเศษ ---\nif (jsonObject.phonenumber && jsonObject.phonenumber !== \"-\") {\n  jsonObject.phonenumber = \"'\" + jsonObject.phonenumber;\n}\n\n// --- 7. ส่งผลลัพธ์ที่สมบูรณ์ออกไป ---\nreturn [jsonObject];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -512,
+        -176
+      ],
+      "id": "69e0515a-b9f0-4bac-b420-f202888a73b2",
+      "name": "convert string to json"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1EJ5kzhQCnzq_QHWNWEWFIjl_nYt56tNWF4gtvf1VFHU",
+          "mode": "list",
+          "cachedResultName": "fair_company_information",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1EJ5kzhQCnzq_QHWNWEWFIjl_nYt56tNWF4gtvf1VFHU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "25/10gadget",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1EJ5kzhQCnzq_QHWNWEWFIjl_nYt56tNWF4gtvf1VFHU/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "name_cn": "={{ $json.name_cn }}",
+            "company_en": "={{ $json.company_en }}",
+            "company_cn": "={{ $json.company_cn }}",
+            "position": "={{ $json.title }}",
+            "position 2": "={{ $json.position }}",
+            "phonenumber": "={{ $json.phonenumber }}",
+            "email": "={{ $json.email }}",
+            "wechat": "={{ $json.wechat }}",
+            "whatsapp": "={{ $json.whatsapp }}",
+            "address": "={{ $json.address }}",
+            "city": "={{ $json.city }}",
+            "country": "={{ $json.country }}",
+            "website": "={{ $json.website }}",
+            "submitted_by": "={{ $('Telegram Trigger').item.json.message.from.first_name }} {{ $('Telegram Trigger').item.json.message.from.last_name }}",
+            "remark": "={{ $json.remark }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "name_cn",
+              "displayName": "name_cn",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "company_en",
+              "displayName": "company_en",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "company_cn",
+              "displayName": "company_cn",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "position",
+              "displayName": "position",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "position 2",
+              "displayName": "position 2",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phonenumber",
+              "displayName": "phonenumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "wechat",
+              "displayName": "wechat",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "whatsapp",
+              "displayName": "whatsapp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "address",
+              "displayName": "address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "city",
+              "displayName": "city",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "country",
+              "displayName": "country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "website",
+              "displayName": "website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "submitted_by",
+              "displayName": "submitted_by",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "remark",
+              "displayName": "remark",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Product",
+              "displayName": "Product",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -16,
+        -176
+      ],
+      "id": "3de9d2b7-f35a-4b5d-9565-54d2ad627349",
+      "name": "Append row in sheet1",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "eJhvb9TeYFXUYNE7",
+          "name": "Google Sheets account 15"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "=อัพเดทเรียบร้อยแล้ว\nname_en: {{ $('convert string to json').item.json.name_en }}\nname_cn: {{ $('convert string to json').item.json.name_cn }}\ncompany_en: {{ $('convert string to json').item.json.company_en }}\ncompany_cn: {{ $('convert string to json').item.json.company_cn }}\ntitle: {{ $('convert string to json').item.json.title }}\nposition: {{ $('convert string to json').item.json.position }}\nphonenumber: {{ $('convert string to json').item.json.phonenumber }}\nemail: {{ $('convert string to json').item.json.email }}\nwechat: {{ $('convert string to json').item.json.wechat }}\nwhatsapp: {{ $('convert string to json').item.json.whatsapp }}\naddress: {{ $('convert string to json').item.json.address }}\ncity: {{ $('convert string to json').item.json.city }}\ncountry: {{ $('convert string to json').item.json.country }}\nwebsite: {{ $('convert string to json').item.json.website }}\nremark: {{ $('Telegram Trigger').item.json.message.caption }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        160,
+        -176
+      ],
+      "id": "51c023ed-f824-49ab-8d5f-0a23dc889bbb",
+      "name": "Send a text message",
+      "webhookId": "f309fee3-003c-4782-80aa-4ce347a06472",
+      "credentials": {
+        "telegramApi": {
+          "id": "vdPi3yhFs2JR8L4O",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "=card-{{ $now.toMillis() }}.jpg",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive",
+          "cachedResultUrl": "https://drive.google.com/drive/my-drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1xcHLPoHteKD3QG-6V6KFmxO00lg7cCaD",
+          "mode": "list",
+          "cachedResultName": "biz card_Gadget Fair ",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1xcHLPoHteKD3QG-6V6KFmxO00lg7cCaD"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -800,
+        -464
+      ],
+      "id": "e6c37d16-1338-40f6-a709-7475bdb7725a",
+      "name": "Upload file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "zLzygICUvSmFaEWq",
+          "name": "Google Drive account 12"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "eaa5e0ee-e6cc-45a9-8507-a33443191951",
+              "leftValue": "={{ $json.message.photo }}",
+              "rightValue": "",
+              "operator": {
+                "type": "array",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1328,
+        -176
+      ],
+      "id": "dbc90581-c9bf-4303-9fad-ab4b11e90e30",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "amount": "={{ Math.random() * 30 }}"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -192,
+        -176
+      ],
+      "id": "e5c3b1db-d10c-4031-b950-be389ef8978d",
+      "name": "Wait",
+      "webhookId": "88fe4715-f7f9-4e24-ac46-9f12c9ea6982"
+    },
+    {
+      "parameters": {
+        "content": "## Trigger\n\n",
+        "height": 544,
+        "width": 480,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1520,
+        -384
+      ],
+      "typeVersion": 1,
+      "id": "532223fc-ae94-4609-956c-1fba3685ad7e",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Save Images\n\n\n",
+        "height": 224,
+        "width": 400,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -928,
+        -528
+      ],
+      "typeVersion": 1,
+      "id": "97f9f6a4-8a11-4407-8e2d-7a86c9ca8625",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## AI Reading\n\n\n\n",
+        "height": 416,
+        "width": 592
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -928,
+        -256
+      ],
+      "typeVersion": 1,
+      "id": "4dde49e0-0907-436f-a3af-cc3ad3f404a4",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "## Save in Data Base",
+        "height": 416,
+        "width": 592,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -240,
+        -256
+      ],
+      "typeVersion": 1,
+      "id": "2445c7bc-f71e-4bdf-bee7-22f36e47243c",
+      "name": "Sticky Note3"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "convert string to json",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a file": {
+      "main": [
+        [
+          {
+            "node": "Upload file",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "convert string to json": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet1": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Get a file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "d2f20ff0-ad62-4bbd-9e06-8999179495e7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "702c22e5b95c07a83973836b08ce39815d85ec88d3a244e025938f0a486d1f6f"
+  },
+  "id": "g3Ci6A0eeyxQWgu3",
+  "tags": []
+}
